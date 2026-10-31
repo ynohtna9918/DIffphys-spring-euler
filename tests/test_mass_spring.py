@@ -214,3 +214,14 @@ def test_simulate_shapes_and_initial_state():
     xs, vs, es = simulate(oscillator(), 0.001, 1000, step_semi_implicit_euler)
     assert xs.shape == (1001, 2, 3) and vs.shape == (1001, 2, 3) and es.shape == (1001,)
     assert xs[0, 1, 0] == 1.1 and es[0] == pytest.approx(0.5)
+
+
+from src.mass_spring import make_single_oscillator, make_chain
+
+def test_factories():
+    osc = make_single_oscillator()
+    assert np.allclose(compute_forces(osc), 0)
+    ch = make_chain(5)
+    assert ch.springs.tolist() == [[0,1],[1,2],[2,3],[3,4]]
+    assert np.allclose(ch.x[:, 1], [0, -0.3, -0.6, -0.9, -1.2])
+    assert np.allclose(compute_forces(ch), 0)

@@ -158,3 +158,28 @@ def simulate(sys, dt, steps, stepper):
         energies.append(total_energy(sys))
     return np.array(xs), np.array(vs), np.array(energies)
 
+def make_single_oscillator(k_s=100.0, m=1.0, rest=1.0, dim=3,
+                           k_d=0.0, drag=0.0, gravity=None) -> SpringSystem:
+    x = np.zeros((2, dim))
+    x[1, 0] = rest
+    if gravity is None:
+        gravity = np.zeros(dim)
+    return SpringSystem(x=x, v=np.zeros((2, dim)), inv_masses=[0.0, 1.0 / m],
+                        springs=[[0, 1]], rest_lengths=[rest],
+                        k_s=k_s, k_d=k_d, gravity=gravity, drag=drag)
+
+def make_chain(n=5, spacing=0.3, k_s=100.0, m=1.0,
+               k_d=0.0, drag=0.0, gravity=None, dim=3) -> SpringSystem:
+    x = np.zeros((n, dim))
+    x[:, 1] = -spacing * np.arange(n)
+    v = np.zeros((n, dim))
+    inv_masses = np.full(n, 1.0 / m)
+    inv_masses[0] = 0.0
+    springs = [[k, k + 1] for k in range(n - 1)]
+    rest_lengths = np.full(n - 1, spacing)
+    if gravity is None:
+        gravity = np.zeros(dim)
+    
+    return SpringSystem(x=x, v=v, inv_masses=inv_masses, springs=springs, rest_lengths=rest_lengths,
+                        k_s=k_s, k_d=k_d, gravity=gravity, drag=drag)
+
