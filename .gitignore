@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 *.mp4
+bin/
+lib/
+include/
+pyvenv.cfg
