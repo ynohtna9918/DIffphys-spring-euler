@@ -1,4 +1,4 @@
-from src.mass_spring import compute_forces, compute_forces_vec
+from src.mass_spring import compute_forces, compute_forces_loop
 from src.mass_spring import SpringSystem
 import numpy as np
 import pytest
@@ -21,11 +21,11 @@ def random_system(seed, N=30, M=80):
 @pytest.mark.parametrize("seed", range(5))
 def test_vectorized_matches_loop(seed):
     sys = random_system(seed)
-    assert np.abs(compute_forces_vec(sys) - compute_forces(sys)).max() < 1e-12
+    assert np.abs(compute_forces(sys) - compute_forces_loop(sys)).max() < 1e-12
 
 
 def test_vectorized_handles_no_springs():
     sys = SpringSystem(x=[[0, 0, 0], [1, 0, 0]], v=[[0, 0, 0], [1, 0, 0]], inv_masses=[1, 1],
                        springs=[], rest_lengths=[], k_s=100, k_d=1,
                        gravity=[0, -9.81, 0], drag=0.5)
-    assert np.allclose(compute_forces_vec(sys), compute_forces(sys))
+    assert np.allclose(compute_forces(sys), compute_forces_loop(sys))
