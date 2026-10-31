@@ -146,3 +146,15 @@ def step_midpoint(sys, dt):
     mid = dataclasses.replace(sys, x = x_mid, v = v_mid)
     _, a_mid = derivatives(mid)
     sys.v = sys.v + a_mid * dt
+
+def simulate(sys, dt, steps, stepper):
+    xs = [sys.x.copy()]
+    vs = [sys.v.copy()]
+    energies = [total_energy(sys)]
+    for _ in range(steps):
+        stepper(sys, dt)
+        xs.append(sys.x.copy())
+        vs.append(sys.v.copy())
+        energies.append(total_energy(sys))
+    return np.array(xs), np.array(vs), np.array(energies)
+

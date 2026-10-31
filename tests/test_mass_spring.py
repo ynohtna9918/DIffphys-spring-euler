@@ -196,3 +196,21 @@ def test_convergence_order(stepper, ratio):
 def test_pinned_particle_bit_identical(stepper):
     xs, _ = run(oscillator(gravity=[0, -9.81, 0]), stepper, 1000)
     assert np.array_equal(xs[-1, 0], xs[0, 0])
+
+
+from src.mass_spring import SpringSystem, simulate, step_semi_implicit_euler, step_explicit_euler
+
+def osc():
+    return SpringSystem([[0,0,0],[1.1,0,0]], np.zeros((2,3)), [0,1], [[0,1]], [1.0], 100, 0, [0,0,0], 0)
+
+xs, vs, es = simulate(osc(), 0.001, 1000, step_semi_implicit_euler)
+print(xs.shape, vs.shape, es.shape)     # (1001, 2, 3) (1001, 2, 3) (1001,)
+print(es[0], xs[0, 1, 0], xs[1, 1, 0])  # 0.5  1.1  1.09999
+
+_, _, es2 = simulate(osc(), 0.001, 2000, step_explicit_euler)
+print(f"{es2[-1] / es2[0] - 1:+.1%}")   # +22.1%  (Case A2, explicit)
+
+def test_simulate_shapes_and_initial_state():
+    xs, vs, es = simulate(oscillator(), 0.001, 1000, step_semi_implicit_euler)
+    assert xs.shape == (1001, 2, 3) and vs.shape == (1001, 2, 3) and es.shape == (1001,)
+    assert xs[0, 1, 0] == 1.1 and es[0] == pytest.approx(0.5)
