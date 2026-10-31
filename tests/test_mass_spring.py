@@ -77,3 +77,122 @@ def test_zero_length_spring_gives_no_nan():
 def test_accumulator_is_fresh_each_call():
     sys = make(gravity=[0, -9.81, 0])
     assert np.array_equal(compute_forces(sys), compute_forces(sys))
+
+
+import pytest
+from src.mass_spring import (SpringSystem, total_energy,
+                             step_explicit_euler, step_semi_implicit_euler, step_midpoint)
+
+DT = 0.001
+OMEGA = 10.0                       # sqrt(k/m) = sqrt(100/1)
+PERIOD = 2 * np.pi / OMEGA         # 0.6283 s
+ALL_STEPPERS = [step_explicit_euler, step_semi_implicit_euler, step_midpoint]
+
+
+def oscillator(**change):
+    """Case A: pin at origin, 1 kg particle at x = 1.1, spring k = 100, L0 = 1."""
+    base = dict(x=[[0, 0, 0], [1.1, 0, 0]], v=[[0, 0, 0], [0, 0, 0]], inv_masses=[0, 1],
+                springs=[[0, 1]], rest_lengths=[1.0], k_s=100, k_d=0,
+                gravity=[0, 0, 0], drag=0)
+    return SpringSystem(**{**base, **change})
+
+
+def run(sys, stepper, steps, dt=DT):
+    """Advance `steps` times; return positions (steps+1, N, dim) and energies (steps+1,)."""
+    xs, es = [sys.x.copy()], [total_energy(sys)]
+    for _ in range(steps):
+        stepper(sys, dt)
+        xs.append(sys.x.copy())
+        es.append(total_energy(sys))
+    return np.array(xs), np.array(es)
+
+
+def zero_crossing_period(u, dt):
+    """Mean time between upward zero crossings of u, with linear interpolation."""
+    k = np.where((u[:-1] < 0) & (u[1:] >= 0))[0]
+    t = (k + u[k] / (u[k] - u[k + 1])) * dt
+    return np.mean(np.diff(t))
+
+
+# 1. One step from the Case A start: the update ORDER shows up immediately.
+@pytest.mark.parametrize("stepper, x1, e1", [
+    (step_explicit_euler,      1.1,      0.50005),
+    (step_semi_implicit_euler, 1.09999,  0.49995000500),
+    (step_midpoint,            1.099995, 0.50000000125),
+])
+def test_one_step(stepper, x1, e1):
+    sys = oscillator()
+    stepper(sys, DT)
+    assert sys.x[1, 0] == pytest.approx(x1, abs=1e-12)
+    assert sys.v[1, 0] == pytest.approx(-0.01, abs=1e-12)
+    assert total_energy(sys) == pytest.approx(e1, abs=1e-10)
+
+
+# 2. Free fall (no springs): each method has its own exact closed form.
+@pytest.mark.parametrize("stepper, factor", [
+    (step_explicit_euler,      lambda n: n * (n - 1)),   # x uses OLD v: lags behind
+    (step_semi_implicit_euler, lambda n: n * (n + 1)),   # x uses NEW v: runs ahead
+    (step_midpoint,            lambda n: n * n),         # exact for constant acceleration
+])
+def test_free_fall_closed_form(stepper, factor):
+    g, n = 9.81, 100
+    sys = SpringSystem(x=[[0, 0, 0]], v=[[0, 0, 0]], inv_masses=[1], springs=[],
+                       rest_lengths=[], k_s=0, k_d=0, gravity=[0, -g, 0], drag=0)
+    for _ in range(n):
+        stepper(sys, DT)
+    assert sys.x[0, 1] == pytest.approx(-0.5 * g * DT**2 * factor(n), rel=1e-12)
+    assert sys.v[0, 1] == pytest.approx(-g * n * DT, rel=1e-12)
+
+
+# 3. Explicit Euler gains energy on EVERY step (the spiral).
+def test_explicit_euler_energy_grows_every_step():
+    _, es = run(oscillator(), step_explicit_euler, 1000)
+    assert np.all(np.diff(es) > 0)
+    assert es[-1] / es[0] == pytest.approx((1 + (OMEGA * DT) ** 2) ** 1000, rel=1e-9)  # ~1.105
+
+
+# 4. Semi-implicit Euler: energy wobbles but stays in a narrow band.
+def test_semi_implicit_energy_bounded():
+    _, es = run(oscillator(), step_semi_implicit_euler, 4000)
+    assert np.max(np.abs(es - es[0])) / es[0] < 0.01        # measured ~0.5%
+
+
+# 5. Case A2 ranking after 2 s: explicit drifts most, midpoint least.
+def test_energy_drift_ranking():
+    drift = {}
+    for stepper in ALL_STEPPERS:
+        _, es = run(oscillator(), stepper, 2000)
+        drift[stepper.__name__] = abs(es[-1] - es[0]) / es[0]
+    e, s, m = (drift[f.__name__] for f in ALL_STEPPERS)
+    assert e > 0.20                      # explicit: +22%
+    assert m < s < e
+    assert m < 1e-4                      # midpoint: flat to ~4 decimals
+
+
+# 6. The oscillation period is right (semi-implicit and midpoint).
+@pytest.mark.parametrize("stepper", [step_semi_implicit_euler, step_midpoint])
+def test_period(stepper):
+    xs, _ = run(oscillator(), stepper, 6300)                # ~10 periods
+    T = zero_crossing_period(xs[:, 1, 0] - 1.0, DT)
+    assert abs(T - PERIOD) / PERIOD < 0.005
+
+
+# 7. Accuracy order: halving dt cuts the error ~2x (Euler) or ~4x (midpoint).
+@pytest.mark.parametrize("stepper, ratio", [
+    (step_semi_implicit_euler, 2.0),
+    (step_midpoint,            4.0),
+])
+def test_convergence_order(stepper, ratio):
+    t_end = 0.5
+    def error(dt):
+        xs, _ = run(oscillator(), stepper, round(t_end / dt), dt)
+        exact = 1.0 + 0.1 * np.cos(OMEGA * t_end)
+        return abs(xs[-1, 1, 0] - exact)
+    assert error(0.002) / error(0.001) == pytest.approx(ratio, rel=0.15)
+
+
+# 8. A pinned particle never moves, bit for bit, under every method.
+@pytest.mark.parametrize("stepper", ALL_STEPPERS)
+def test_pinned_particle_bit_identical(stepper):
+    xs, _ = run(oscillator(gravity=[0, -9.81, 0]), stepper, 1000)
+    assert np.array_equal(xs[-1, 0], xs[0, 0])

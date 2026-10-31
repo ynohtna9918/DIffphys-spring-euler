@@ -128,17 +128,17 @@ def total_energy(sys: SpringSystem):
     return float(KE + PE_spring + PE_gravity)
 
 
-def semi_explicit_euler(sys, dt):
+def step_explicit_euler(sys, dt):
     _, a = derivatives(sys)
     sys.x = sys.x + sys.v * dt
     sys.v = sys.v + a * dt
 
-def semi_implicit_euler(sys, dt):
+def step_semi_implicit_euler(sys, dt):
     _, a = derivatives(sys)
     sys.v = sys.v + a * dt  
     sys.x = sys.x + sys.v * dt
 
-def midpoint(sys, dt):
+def step_midpoint(sys, dt):
     _, a = derivatives(sys)
     x_mid = sys.x + sys.v * (dt / 2)
     v_mid = sys.v + a * (dt / 2)
