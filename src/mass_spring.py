@@ -189,3 +189,24 @@ def measure_period(u: np.ndarray, dt: float) -> float:
         raise ValueError(f"need at least 2 upward zero crossings, found {len(k)}")
     t = (k + u[k] / (u[k] - u[k + 1])) * dt
     return float(np.mean(np.diff(t)))
+
+def compute_forces_vec(sys: SpringSystem) -> np.ndarray:
+    F = np.zeros_like(sys.x)
+    masses = _masses(sys)
+    F += masses[:, None] * sys.gravity[None, :]
+    F += -sys.drag * sys.v
+
+    i, j = sys.springs[:, 0], sys.springs[:, 1]
+    d, L = _spring_geometry(sys)
+    ok = L >= 1e-12
+    n = np.zeros_like(d)
+    n[ok] = d[ok] / L[ok, None]
+    stretch = L - sys.rest_lengths
+    rel_v = np.sum((sys.v[j] - sys.v[i]) * n, axis = 1)
+    f = sys.k_s * stretch + sys.k_d * rel_v
+    f_vec = f[:, None] * n
+    np.add.at(F, i, f_vec)
+    np.add.at(F, j, -f_vec)
+    return F
+    
+    
