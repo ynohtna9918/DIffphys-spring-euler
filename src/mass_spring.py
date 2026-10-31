@@ -91,7 +91,7 @@ def _spring_geometry(sys: SpringSystem):
     L = np.linalg.norm(d, axis = 1)
     return d, L
 
-def compute_forces(sys: SpringSystem) -> np.ndarray:
+def compute_forces_loop(sys: SpringSystem) -> np.ndarray:
     '''Calculate the total force on every particle.
 Must zero the accumulator every call.  '''
     F = np.zeros_like(sys.x)
@@ -190,7 +190,10 @@ def measure_period(u: np.ndarray, dt: float) -> float:
     t = (k + u[k] / (u[k] - u[k + 1])) * dt
     return float(np.mean(np.diff(t)))
 
-def compute_forces_vec(sys: SpringSystem) -> np.ndarray:
+def compute_forces(sys: SpringSystem) -> np.ndarray:
+    """Updated version of compute_forces.
+    Get rid of loop and use vectorization.
+    """
     F = np.zeros_like(sys.x)
     masses = _masses(sys)
     F += masses[:, None] * sys.gravity[None, :]
