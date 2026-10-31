@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import dataclasses
 import numpy as np
 
 @dataclass
@@ -78,26 +79,33 @@ class SpringSystem:
         # pinned particles cannot move
         self.v[self.inv_masses == 0] = 0.0
 
+def _masses(sys: SpringSystem) -> np.ndarray:
+    masses = np.where(sys.inv_masses > 0, 
+                      1.0 / np.where(sys.inv_masses > 0, sys.inv_masses, 1.0),
+                      0)
+    return masses
+
+def _spring_geometry(sys: SpringSystem):
+    i, j = sys.springs[:, 0], sys.springs[:, 1]
+    d = sys.x[j] - sys.x[i]
+    L = np.linalg.norm(d, axis = 1)
+    return d, L
 
 def compute_forces(sys: SpringSystem) -> np.ndarray:
     '''Calculate the total force on every particle.
 Must zero the accumulator every call.  '''
     F = np.zeros_like(sys.x)
-    masses = np.where(sys.inv_masses > 0, 
-                      1.0 / np.where(sys.inv_masses > 0, sys.inv_masses, 1.0),
-                      0)
+    masses = _masses(sys)
     F += masses[:, None] * sys.gravity[None, :]
     F += -sys.drag * sys.v
 
-    # Calculate each spring
+    d_all, L_all = _spring_geometry(sys)
     for s, (i, j) in enumerate(sys.springs):
-
-        d = sys.x[j] - sys.x[i]
-        L = np.linalg.norm(d)
+        d, L = d_all[s], L_all[s]
         if L < 1e-12:
             continue
         n = d / L
-        stretch = L - sys.rest_lengths[i]
+        stretch = L - sys.rest_lengths[s]
         rel_v = np.dot(sys.v[j] - sys.v[i], n)
         f = sys.k_s * stretch + sys.k_d * rel_v
         f_vec = f * n
@@ -106,3 +114,35 @@ Must zero the accumulator every call.  '''
 
     return F
 
+def derivatives(sys: SpringSystem):
+    F = compute_forces(sys)
+    a = F * sys.inv_masses[:, None]
+    return sys.v.copy(), a
+
+def total_energy(sys: SpringSystem):
+    masses = _masses(sys)
+    KE = 0.5 * np.sum(np.sum(sys.v ** 2, axis = 1) * masses)
+    _, L = _spring_geometry(sys)
+    PE_spring = np.sum((L - sys.rest_lengths) ** 2) * 0.5 * sys.k_s
+    PE_gravity = -np.sum((sys.x @ sys.gravity) * masses)
+    return float(KE + PE_spring + PE_gravity)
+
+
+def semi_explicit_euler(sys, dt):
+    _, a = derivatives(sys)
+    sys.x = sys.x + sys.v * dt
+    sys.v = sys.v + a * dt
+
+def semi_implicit_euler(sys, dt):
+    _, a = derivatives(sys)
+    sys.v = sys.v + a * dt  
+    sys.x = sys.x + sys.v * dt
+
+def midpoint(sys, dt):
+    _, a = derivatives(sys)
+    x_mid = sys.x + sys.v * (dt / 2)
+    v_mid = sys.v + a * (dt / 2)
+    sys.x = sys.x + v_mid * dt
+    mid = dataclasses.replace(sys, x = x_mid, v = v_mid)
+    _, a_mid = derivatives(mid)
+    sys.v = sys.v + a_mid * dt
