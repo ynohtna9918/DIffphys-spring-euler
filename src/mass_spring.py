@@ -183,3 +183,9 @@ def make_chain(n=5, spacing=0.3, k_s=100.0, m=1.0,
     return SpringSystem(x=x, v=v, inv_masses=inv_masses, springs=springs, rest_lengths=rest_lengths,
                         k_s=k_s, k_d=k_d, gravity=gravity, drag=drag)
 
+def measure_period(u: np.ndarray, dt: float) -> float:
+    k = np.where((u[:-1] < 0) & (u[1:] >= 0))[0]
+    if len(k) < 2:
+        raise ValueError(f"need at least 2 upward zero crossings, found {len(k)}")
+    t = (k + u[k] / (u[k] - u[k + 1])) * dt
+    return float(np.mean(np.diff(t)))
