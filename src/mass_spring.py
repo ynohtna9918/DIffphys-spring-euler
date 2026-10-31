@@ -77,3 +77,32 @@ class SpringSystem:
 
         # pinned particles cannot move
         self.v[self.inv_masses == 0] = 0.0
+
+
+def compute_forces(sys: SpringSystem) -> np.ndarray:
+    '''Calculate the total force on every particle.
+Must zero the accumulator every call.  '''
+    F = np.zeros_like(sys.x)
+    masses = np.where(sys.inv_masses > 0, 
+                      1.0 / np.where(sys.inv_masses > 0, sys.inv_masses, 1.0),
+                      0)
+    F += masses[:, None] * sys.gravity[None, :]
+    F += -sys.drag * sys.v
+
+    # Calculate each spring
+    for s, (i, j) in enumerate(sys.springs):
+
+        d = sys.x[j] - sys.x[i]
+        L = np.linalg.norm(d)
+        if L < 1e-12:
+            continue
+        n = d / L
+        stretch = L - sys.rest_lengths[i]
+        rel_v = np.dot(sys.v[j] - sys.v[i], n)
+        f = sys.k_s * stretch + sys.k_d * rel_v
+        f_vec = f * n
+        F[i] += f_vec
+        F[j] -= f_vec
+
+    return F
+
