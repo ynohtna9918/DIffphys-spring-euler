@@ -1,3 +1,4 @@
 numpy>=2.0
 matplotlib>=3.9
 pytest>=8
+warp-lang>=1.12
