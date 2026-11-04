@@ -61,3 +61,26 @@ def test_static_equilibrium(m, k):
     assert abs(extension - expected) / expected < 0.01
     assert np.linalg.norm(vs[-1, 1]) < 1e-4        # it has actually stopped
     assert np.allclose(xs[-1, 1, [0, 2]], 0)       # straight below the pin
+
+
+# 4. PDF M0 acceptance: two FREE masses oscillate with the reduced-mass period.
+@pytest.mark.parametrize("inv", [[1.0, 1.0], [1.0, 0.5]])   # 1+1 kg and 1+2 kg
+def test_two_free_masses_reduced_mass_period(inv):
+    k = 100.0
+    sys = SpringSystem(x=[[0, 0, 0], [1.1, 0, 0]], v=np.zeros((2, 3)), inv_masses=inv,
+                       springs=[[0, 1]], rest_lengths=[1.0], k_s=k, k_d=0,
+                       gravity=[0, 0, 0], drag=0)
+    xs, _, _ = simulate(sys, DT, 3000, step_semi_implicit_euler)
+    m = 1.0 / np.array(inv)
+    mu = m[0] * m[1] / m.sum()                     # 0.5 kg and 2/3 kg
+    T = 2 * np.pi * np.sqrt(mu / k)                # 0.4443 s and 0.5130 s
+    u = np.linalg.norm(xs[:, 1] - xs[:, 0], axis=1) - 1.0
+    assert abs(measure_period(u, DT) - T) / T < 0.005       # measured ~1e-5
+
+
+# 5. PDF test plan: semi-implicit Euler keeps energy within 1% for 10,000 steps.
+def test_energy_drift_10k_steps():
+    sys = make_single_oscillator()
+    sys.x[1, 0] = 1.1
+    _, _, es = simulate(sys, DT, 10_000, step_semi_implicit_euler)
+    assert np.abs(es - es[0]).max() / es[0] < 0.01          # measured 0.50%
