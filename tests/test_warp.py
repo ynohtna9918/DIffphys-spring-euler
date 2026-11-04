@@ -1,3 +1,5 @@
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -65,3 +67,27 @@ def test_trajectory_matches_numpy(device):
 def test_pinned_particle_bit_identical(device):
     xs, _, _ = simulate_warp(make_chain(5, gravity=G), 0.001, 1000, device)
     assert np.array_equal(xs[-1, 0], xs[0, 0])
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_per_spring_parameters_match_numpy(device):
+    # Forces are a sum over springs, so the per-spring answer is: external forces
+    # plus each spring on its own (as a one-spring NumPy system with its own k_s, k_d).
+    sys = random_system(7)
+    rng = np.random.default_rng(7)
+    k_s = rng.uniform(10, 200, sys.springs.shape[0])
+    k_d = rng.uniform(0, 5, sys.springs.shape[0])
+    F_np = compute_forces(dataclasses.replace(sys, springs=np.zeros((0, 2), int), rest_lengths=[]))
+    for s, (i, j) in enumerate(sys.springs):
+        F_np += compute_forces(dataclasses.replace(
+            sys, springs=[[i, j]], rest_lengths=[sys.rest_lengths[s]], k_s=k_s[s], k_d=k_d[s],
+            gravity=np.zeros(3), drag=0.0))
+
+    model = WarpModel(sys, device)
+    model.k_s.assign(k_s)
+    model.k_d.assign(k_d)
+    x = wp.array(sys.x, dtype=wp.vec3d, device=device)
+    v = wp.array(sys.v, dtype=wp.vec3d, device=device)
+    F = wp.zeros(model.N, dtype=wp.vec3d, device=device)
+    compute_forces_warp(model, x, v, F)
+    assert np.abs(F.numpy() - F_np).max() < 1e-12 * np.abs(F_np).max()
