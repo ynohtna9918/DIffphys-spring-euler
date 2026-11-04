@@ -9,10 +9,12 @@ and made differentiable with `wp.Tape`.
 ## Status
 
 - **Done:** NumPy (float64, CPU) reference simulator with three integrators,
-  validated against analytic physics (55 tests; see Validation). It is the
-  reference the Warp version is checked against.
-- **In progress:** Warp port of the forward simulator.
-- **Not yet implemented:** gradients and system identification.
+  validated against analytic physics. Warp port that matches it to 4.4e-16,
+  gradients through `wp.Tape` that match finite differences to 1.1e-8, and a
+  system-identification demo that recovers spring stiffness within 0.81%.
+  77 tests. One-page write-up: [`docs/v1_note.md`](docs/v1_note.md).
+- **Remaining for v1:** the same tests and a benchmark on `cuda:0` (RTX 5070),
+  a first green CI run, and the `v1.0` tag.
 
 ## v1 scope (target: early December 2026)
 
@@ -23,13 +25,14 @@ the gradients are useful. It is done when every box below is ticked.
 - [x] Acceptance cases A, A2, B, C pass; integrator energy figure
 - [ ] Warp forward simulator matches NumPy (Case C, 2000 steps:
       max |Δx|, |Δv| < 1e-10) on CPU and `cuda:0`; `check_cases --warp` ALL PASS
+      — CPU done (max |Δv| 4.4e-16); `cuda:0` not yet run
 - [ ] GPU benchmark from 10 to 1,000,000 particles
-- [ ] Gradients through `wp.Tape`: autodiff vs central finite differences
-      (float64) for k, c, L0, x0, v0, relative error < 1e-5
-- [ ] System identification: recover spring stiffness from a noisy
-      trajectory, error < 5%
-- [ ] CI runs the test suite on every push
-- [ ] One-page technical note (`docs/v1_note.md`); tag `v1.0`
+- [x] Gradients through `wp.Tape`: autodiff vs central finite differences
+      (float64) for k, c, L0, x0, v0, relative error < 1e-5 (worst: 1.1e-8)
+- [x] System identification: recover spring stiffness from a noisy
+      trajectory, error < 5% (worst of 8 seeds: 0.81%)
+- [ ] CI runs the test suite on every push — workflow written, not yet run
+- [ ] One-page technical note (`docs/v1_note.md`); tag `v1.0` — note written
 
 ## Future work (out of scope for v1)
 
@@ -43,8 +46,12 @@ contributions to Newton.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest -q                 # 55 tests
+python -m pytest -q                 # 77 tests (more on a machine with CUDA)
 python -m scripts.check_cases       # acceptance cases A, A2, B, C -> ALL PASS
+python -m scripts.check_cases --warp [--device cuda:0]   # A, B, C on Warp
+python -m scripts.gradcheck         # autodiff vs finite differences, eps sweep
+python -m scripts.system_id         # writes figures/system_id.png
+python -m scripts.bench_warp        # time per step, NumPy vs Warp
 python -m scripts.plot_energy       # writes figures/energy_comparison.png
 ```
 
@@ -67,14 +74,28 @@ python -m scripts.plot_energy       # writes figures/energy_comparison.png
 | Chain of 5, spring lengths | 0.6924 / 0.5943 / 0.4962 / 0.3981 m | same to 4 decimals |
 | Momentum, free pair | conserved | change < 1e-10 |
 | Damped peaks | 0.1·e^(−0.5 t) | within 0.1 % |
+| Two free masses, period | 2π√(μ/k) = 0.4443 s | error 8e-6 |
+| Energy, semi-implicit, 10,000 steps | bounded | max deviation 0.50 % |
+| Warp vs NumPy, chain of 5, 2000 steps | identical | max \|Δv\| 4.4e-16 |
+| Gradients vs central finite differences | equal | worst relative error 1.1e-8 |
+| System ID, 4 stiffnesses, 2 mm noise | 150 / 100 / 80 / 120 N/m | worst error 0.81 % (8 seeds) |
 
 ![Energy of the three integrators](figures/energy_comparison.png)
+
+![System identification](figures/system_id.png)
 
 ## Layout
 
 - `src/mass_spring.py` — `SpringSystem`, forces (vectorized + loop reference),
   integrators, `simulate`, factories, `measure_period`
-- `tests/` — validation, forces, integrators, physics laws, vectorized-vs-loop
-- `scripts/` — `check_cases.py` (acceptance), `plot_energy.py` (figure)
+- `src/warp_sim.py` — Warp kernels, `WarpModel`, `simulate_warp`, differentiable
+  `rollout`, `loss_and_grad`
+- `src/gradcheck.py` — finite-difference gradient check
+- `src/system_id.py` — stiffness recovery with Adam
+- `tests/` — validation, forces, integrators, physics laws, vectorized-vs-loop,
+  Warp vs NumPy, gradients, system ID
+- `scripts/` — `check_cases.py` (acceptance, `--warp`), `gradcheck.py`,
+  `system_id.py`, `bench_warp.py`, `plot_energy.py`, `warp_smoke.py`
+- `docs/v1_note.md` — one-page technical note
 - `figures/` — generated figures
 - `Guides/` — spec, task list, expected output, build guide

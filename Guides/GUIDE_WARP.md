@@ -1,5 +1,12 @@
 # diffphys — Warp Guide, Phase 1: the forward simulator on the GPU
 
+> **Status (Nov 4, 2026):** Phase 1, Phase 3 (gradients) and the system-ID demo
+> are implemented and committed: `src/warp_sim.py`, `src/gradcheck.py`,
+> `src/system_id.py`. The full suite is 77 tests on the Mac and should be 95 on
+> Windows (18 tests run once per device). Still to do: run the suite,
+> `check_cases --warp --device cuda:0` and `bench_warp` on the RTX 5070.
+> The counts below are for the end of Phase 1 only.
+
 Same rules as `GUIDE.md`: you write the code; each step says **what to build,
 how to think about it, and what you should see**. Don't start a step until the
 previous step's "Expect" check passes.
@@ -336,8 +343,8 @@ One bug none of these catch **on the Mac**: a non-atomic scatter. Only the
 `cuda:0` runs can catch it (Step 1.3, "Trap").
 
 **Expect**
-- Mac: `python -m pytest -q` → `64 passed` (55 old + 9 new).
-- Windows: `73 passed` (55 + 9 on `cpu` + 9 on `cuda:0`).
+- Mac: `python -m pytest -q` → `68 passed` (58 old + 10 new).
+- Windows: `78 passed` (58 + 10 on `cpu` + 10 on `cuda:0`).
 
 ---
 
@@ -415,11 +422,11 @@ The pattern is what matters:
 ### Phase 1 checkpoint
 
 On the Mac:
-- `pytest -q` → 64 passed
+- `pytest -q` → 68 passed
 - `check_cases --warp` → ALL PASS
 
 Commit `"Warp forward simulator (Phase 1)"` and push. On Windows, `git pull`,
-then run `pytest -q` (73 passed), `check_cases --warp` and `bench_warp`. Paste
+then run `pytest -q` (78 passed), `check_cases --warp` and `bench_warp`. Paste
 me the Windows output, and ask me to review `src/warp_sim.py`.
 
 ## What Phase 1 sets up for later
