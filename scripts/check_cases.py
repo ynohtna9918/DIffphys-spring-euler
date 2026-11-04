@@ -2,6 +2,9 @@
 
 Run from the repo root:  python -m scripts.check_cases
 """
+import argparse
+import time
+
 import numpy as np
 
 from src import (make_single_oscillator, make_chain, simulate, measure_period,
@@ -9,6 +12,18 @@ from src import (make_single_oscillator, make_chain, simulate, measure_period,
 
 DT = 0.001
 G = [0.0, -9.81, 0.0]
+
+
+BACKEND = "numpy"
+DEVICE = None
+
+
+def run(sys, steps):
+    """Semi-implicit rollout on the chosen backend: (xs, vs, energies)."""
+    if BACKEND == "warp":
+        from src.warp_sim import simulate_warp
+        return simulate_warp(sys, DT, steps, device=DEVICE)
+    return simulate(sys, DT, steps, step_semi_implicit_euler)
 
 
 def verdict(ok: bool) -> str:
@@ -19,7 +34,7 @@ def case_a() -> bool:
     print("Case A: free oscillator")
     sys = make_single_oscillator()
     sys.x[1, 0] = 1.1
-    xs, _, es = simulate(sys, DT, 4000, step_semi_implicit_euler)
+    xs, _, es = run(sys, 4000)
 
     T = measure_period(xs[:, 1, 0] - 1.0, DT)
     T_exact = 2 * np.pi * np.sqrt(1.0 / 100.0)
@@ -54,7 +69,7 @@ def case_a2() -> bool:
 def case_b() -> bool:
     print("Case B: hanging mass")
     sys = make_single_oscillator(k_d=10.0, drag=0.5, gravity=G)
-    xs, _, _ = simulate(sys, DT, 20000, step_semi_implicit_euler)
+    xs, _, _ = run(sys, 20000)
 
     length = np.linalg.norm(xs[-2000:, 1] - xs[-2000:, 0], axis=1).mean()
     expected = 1.0 + 9.81 / 100.0               # L0 + m*g/k_s
@@ -69,7 +84,7 @@ def case_b() -> bool:
 def case_c() -> bool:
     print("Case C: chain of 5, settled spring lengths (top -> bottom)")
     sys = make_chain(5, k_d=5.0, drag=0.5, gravity=G)
-    xs, _, _ = simulate(sys, DT, 40000, step_semi_implicit_euler)
+    xs, _, _ = run(sys, 40000)
 
     # spring k joins particle k and k+1: lengths for every step, shape (steps+1, 4)
     lengths = np.linalg.norm(xs[:, 1:] - xs[:, :-1], axis=2)[-2000:].mean(axis=0)
@@ -86,7 +101,22 @@ def case_c() -> bool:
 
 
 def main() -> None:
-    results = [case_a(), case_a2(), case_b(), case_c()]
+    global BACKEND, DEVICE
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--warp", action="store_true", help="run A, B, C on the Warp backend")
+    parser.add_argument("--device", default=None, help='Warp device, e.g. "cpu" or "cuda:0"')
+    args = parser.parse_args()
+    if args.warp:
+        import warp as wp
+        BACKEND, DEVICE = "warp", args.device
+        print(f"backend: warp on {wp.get_device(DEVICE)}")
+        cases = [case_a, case_b, case_c]       # A2 needs explicit Euler and midpoint
+    else:
+        print("backend: numpy")
+        cases = [case_a, case_a2, case_b, case_c]
+    t0 = time.perf_counter()
+    results = [case() for case in cases]
+    print(f"time: {time.perf_counter() - t0:.2f} s")
     print("ALL PASS" if all(results) else "SOME CASES FAILED")
 
 
