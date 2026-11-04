@@ -64,7 +64,6 @@ Stages 1–7 and the check script cannot.
 **Do**
 - Create a venv, install `numpy matplotlib pytest`.
 - Create `notebooks/` (empty, keep it in git with a `.gitkeep`).
-
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install numpy matplotlib pytest
 ```
