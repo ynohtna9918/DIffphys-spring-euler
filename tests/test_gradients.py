@@ -32,15 +32,17 @@ def test_rollout_matches_simulate_warp(device):
     v0 = wp.array(sys.v, dtype=wp.vec3d, device=device, requires_grad=True)
     xs, _ = rollout(model, x0, v0, 1e-3, 300)
     ref, _, _ = simulate_warp(sys, 1e-3, 300, device)
-    assert np.array_equal(np.stack([x.numpy() for x in xs]), ref)
+    assert np.abs(np.stack([x.numpy() for x in xs]) - ref).max() < 1e-12   # 0 on CPU
 
 
 # 3. Calling loss_and_grad twice gives the same answer: gradients do not pile up.
+#    (Not bit-for-bit: on a GPU the order of atomic adds can change between runs.)
 @pytest.mark.parametrize("device", DEVICES)
 def test_gradients_reset_between_calls(device):
     model, x0, v0, dt, steps, targets = scenario(device, steps=50)
     loss1, g1 = loss_and_grad(model, x0, v0, dt, steps, targets)
     loss2, g2 = loss_and_grad(model, x0, v0, dt, steps, targets)
-    assert loss1 == loss2 == loss_only(model, x0, v0, dt, steps, targets)
+    assert loss2 == pytest.approx(loss1, rel=1e-12)
+    assert loss_only(model, x0, v0, dt, steps, targets) == pytest.approx(loss1, rel=1e-12)
     for name in g1:
-        assert np.array_equal(g1[name], g2[name])
+        assert np.abs(g2[name] - g1[name]).max() <= 1e-12 * np.abs(g1[name]).max()
